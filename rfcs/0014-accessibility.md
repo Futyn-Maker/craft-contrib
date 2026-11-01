@@ -14,13 +14,16 @@ focus and its colours.
 
 This RFC sets the bar (WCAG 2.2 AA as applied to software), seven rules for
 every UI change, a design step, a check of the accessibility tree next to
-every screenshot check, a list of failures the apps have already produced,
-two labels, builds for testers, and a priority rule. The appendix is the text
-for each app's `AGENTS.md`.
+every screenshot check, a check in CI of what the platform's accessibility
+API reports, a list of failures the apps have already produced, two labels,
+builds for testers, and a priority rule. The appendix is the text for each
+app's `AGENTS.md`.
 
-Tests and agents can't replace a person using a screen reader. The aim is
-that everything a test or an agent can check is checked, and that what only a
-person can check is easy to find.
+Tests and agents can't replace a person using a screen reader, and testers
+are few, so no change ever waits for one: a manual test is never a condition
+for merging. The aim is that everything a test or an agent can check is
+checked, that what only a person can check is easy to find, and that people
+who use the apps report the rest.
 
 ## Motivation
 
@@ -130,7 +133,10 @@ without real focus and semantics has to be reworked.
    - A change that adds or changes a control, a dialog or a keyboard path
      adds or updates an egui_kittest test. The test drives it by keyboard and
      asserts on the accessibility tree: roles, names, states, where focus is
-     after each step, and the announcement if there is one.
+     after each step, and the announcement if there is one. Until the shared
+     helpers for focus and announcements exist (storytold/craft-libs#437,
+     part 4), a PR that can't write such a test says so in its Accessibility
+     section, and review doesn't block on it.
    - The built-in name check stays on. Turning it off
      (`with_accessibility_check(false)`) needs a comment saying why.
    - Whenever an agent takes `ui.screenshot`, it also reads the
@@ -138,6 +144,19 @@ without real focus and semantics has to be reworked.
      through the control channel where it returns the tree, otherwise in a
      kittest test.
    - A test checks the contrast of new colours in both themes.
+   - **Check what the platform reports, not only the tree.** A correct
+     AccessKit tree can still reach screen readers wrong: AccessKit's Windows
+     adapter reports every `Document` as read-only (storytold/wordcraft#3174),
+     and NVDA finds headings only by a text attribute the adapter doesn't
+     set. So CI also reads the running app through the platform's
+     accessibility API, with standard tools and no screen reader. On Windows
+     that is a UI Automation scan with Axe.Windows (the rules engine of
+     Accessibility Insights) and a few UI Automation client checks of what
+     screen readers rely on: focus, names, read-only state, the text pattern
+     and heading styles. storytold/wordcraft#4951's AccessKit fork already
+     tests its text this way. These run as shared jobs in
+     craft-common-actions, so contributors never install or run a screen
+     reader. macOS and Linux follow when someone sets them up.
 5. **Rule out the failures we already have.** Every UI PR checks for:
    - focus left in the document behind a menu, ribbon or KeyTips, so keys
      type into the page (storytold/wordcraft#3171);
@@ -154,31 +173,40 @@ without real focus and semantics has to be reworked.
 
    Failures found later in review or by testers are added to this list.
 6. **Say what was checked.** A UI PR's description has an Accessibility
-   section. It says what the tests and the tree check cover, and what only a
-   person with assistive technology can confirm. Tree tests alone never
-   support "works with screen readers". When only a person can confirm the
-   result, the section says so, and the triage bot or a triager adds
-   `needs screen reader test`.
+   section. It says what the tests and the tree check cover. Tree tests
+   alone never support "works with screen readers". When the PR fixes an
+   accessibility problem, or builds accessibility logic that standard
+   widgets don't give (a drawn surface's tree, its own focus handling, text
+   exposed as a document) with a real risk that only a person can judge, the
+   section says so, and the triage bot or a triager adds
+   `needs screen reader test`. A feature built from standard controls doesn't
+   get the label.
 7. **Labels and builds for testers.**
    - `accessibility` in every repository, with the description craft-libs
      already uses: "Barrier affecting people with disabilities". The triage
      bot applies it as it applies `ui`.
-   - `needs screen reader test` on a PR whose result only a person using a
-     screen reader, braille display or magnifier can confirm. The PR may
-     merge on headless evidence. The label stays until someone tests a build
-     that contains the change and reports on the PR what they heard, with
-     the screen reader, its version and the platform. If the test fails, the
-     issue is reopened.
+   - `needs screen reader test` on the PRs point 6 describes, and on fixes
+     for problems people reported while using assistive technology. It never
+     blocks a merge: the PR merges on its tests and review as usual. The
+     label stays until someone tests a build that contains the change and
+     reports on the PR what they heard, with the screen reader, its version
+     and the platform. If the test fails, the issue is reopened. Everything
+     else is tested the way it reaches users: people who use the apps with
+     assistive technology report what doesn't work.
    - For PRs with that label, CI keeps a Windows build of the PR, and macOS
      and Linux builds where the gate makes them, through
      craft-common-actions.
    - People who test with assistive technology can get GitHub's Triage role
      to set and clear these labels.
-8. **Priority** (adds to RFC-0007). A barrier that stops a keyboard or
+8. **Priority.** This places accessibility barriers on RFC-0007's levels
+   without changing the levels. A barrier that stops a keyboard or
    screen-reader user from a core task (open, type, edit, save, reach the
-   menus or ribbon, use a dialog) is `priority: high`; if it can cost them
-   their work, `priority: critical`. A barrier someone met while using
-   assistive technology is a reproduced failure, not a code-reading finding.
+   menus or ribbon, use a dialog) is "a core tool broken or unusable", so
+   `priority: high`; if it can cost them their work, `priority: critical`. A
+   barrier someone met while using assistive technology is a reproduced
+   failure, not a code-reading finding. If RFC-0007 is accepted first, this
+   point updates it (`Updates: RFC-0007`, as RFC-0013 proposes); if this RFC
+   goes first, RFC-0007 takes the rule into its level definitions.
 9. **Measure it.** Each app's progress docs say whether its core tasks can be
    done with a screen reader, with only a keyboard, at 200% text size and in
    high contrast, as part of its readiness. Tools for making accessible
@@ -189,7 +217,15 @@ without real focus and semantics has to be reworked.
     is accepted. The same text goes into craftrules as
     `standards/accessibility.md`, next to never-crash. Shared code (a
     live-region helper, real focus in craft-menu, the tree in every control
-    channel, test helpers, PR builds) is tracked in storytold/craft-libs#437.
+    channel, test helpers, PR builds, platform checks) is tracked in
+    storytold/craft-libs#437.
+11. **Owner and review.** Like every RFC here, the rules belong to the
+    maintainers and change by RFC. The RFC's author is a contact for
+    questions and for screen-reader testing, not a gate. Reviewers check the
+    Accessibility section and the tests on UI PRs. CodeRabbit, which already
+    reviews every PR, can take the first pass: each app's `.coderabbit.yaml`
+    gets a `path_instructions` entry for its UI crate that points to the
+    appendix below.
 
 ## Alternatives
 
@@ -203,6 +239,9 @@ without real focus and semantics has to be reworked.
 - **No merge without a screen-reader test.** Testers are few and review is
   already the bottleneck (RFC-0008). The label keeps the work findable
   without blocking the queue.
+- **The label on every UI PR.** Far more PRs than anyone could test, so the
+  label would stop meaning anything. It stays for accessibility fixes and for
+  accessibility logic of the app's own.
 
 ## Open questions
 
@@ -246,14 +285,17 @@ change isn't done until it works for them. Standard: craft-contrib RFC-0014
 - **Pointer.** Anything done by dragging can be done without dragging.
 - **Check the tree, not only the screenshot.** Every new or changed
   control, dialog or keyboard path gets a kittest test that drives it by
-  keyboard and asserts roles, names, states, focus and announcements. Keep
-  `with_accessibility_check` on. When you take `ui.screenshot`, also read
-  the accessibility tree and check it.
+  keyboard and asserts roles, names, states, focus and announcements; if the
+  helpers you need don't exist yet, say so in the PR. Keep
+  `with_accessibility_check` on, and keep CI's platform checks green. When
+  you take `ui.screenshot`, also read the accessibility tree and check it.
 - **Rule out known failures:** focus left in the document behind a menu,
   ribbon or KeyTips; editable surfaces reported read-only; dialogs that
   don't take or return focus, or leave controls behind them reachable;
   painted rows with no node; identical names; another platform's shortcut
   text in a name; silent state changes; drag-only actions.
-- **Be honest in the PR.** Say what the tests and the tree cover and what
-  only a person can confirm. Never claim "works with screen readers" from
-  tree tests; ask for `needs screen reader test` instead.
+- **Be honest in the PR.** Say what the tests and the tree cover. Never
+  claim "works with screen readers" from tree tests. Ask for
+  `needs screen reader test` only when the PR fixes an accessibility problem
+  or builds accessibility logic of its own; never hold a PR back for a
+  screen-reader test.
